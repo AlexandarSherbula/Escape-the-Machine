@@ -12,10 +12,11 @@
 #include "StarMap.h"
 #include "TimeAttack.h"
 #include "TitleCard.h"
+#include "EscapeNet.h"
 
 #include <vector>
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__linux__)
 	#include <Windows.h>
 #endif
 
@@ -46,7 +47,7 @@ public:
 	GameContent content;
 	GameMode mode;
 
-	olc::GamePad* gamepad;
+	olc::GamePad* gamepad = nullptr;
 public:
 	MainMenu* mainMenu;
 	PauseMenu* pauseMenu;
@@ -56,12 +57,15 @@ public:
 	StarMap* starMap;
 	Level* levels;
 	Player* player;
+	EscapeNet* escapeNet;
+		
 	std::vector<Object*> vObjects;
 	bool playerControl;
 
 	double fixedTimeSimulated;
 	float timer;
 	float globalDeltaTime;
+	bool bUseGamepad = false;
 public:
 	Game();
 	~Game();
@@ -75,7 +79,8 @@ public:
 	void DrawStringDecalXAligned(const std::string& sText, const olc::vi2d& offset, const olc::Pixel& col = olc::WHITE, const olc::vf2d& scale = { 1.0f, 1.0f });
 
 	void Restart();
-
+	
+	bool IsGamePadReady();
 	olc::HWButton GetGamePadButton(olc::GPButtons b);
 	float GetGamepadAxis(olc::GPAxes a);
 	

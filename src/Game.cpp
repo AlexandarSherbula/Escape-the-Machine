@@ -1,5 +1,19 @@
 #include "Game.h"
 
+constexpr float thirtyFramesPerSecond = 1.0f / 30.f;
+
+#if defined(OLC_PLATFORM_X11)
+bool is_wsl2() {
+    std::ifstream file("/proc/version");
+    std::string line;
+    if (file && std::getline(file, line)) {
+        return line.find("microsoft") != std::string::npos ||
+               line.find("Microsoft") != std::string::npos;
+    }
+    return false;
+}
+#endif
+
 Game::Game()
 {
     sAppName = "Escape the Machine";
@@ -30,8 +44,20 @@ bool Game::OnUserCreate()
     fixedTimeSimulated = 0.0f;
     globalDeltaTime = 0.0f;
 
-    olc::GamePad::init();
+    #if defined(OLC_PLATFORM_X11)
 
+    if(!is_wsl2())
+    {
+        olc::GamePad::init();
+        bUseGamepad = true;
+    }
+
+    #else
+    
+    olc::GamePad::init();
+    bUseGamepad = true;
+    
+    #endif
     playerControl = true;
 
     state = MAIN_MENU;
@@ -44,14 +70,17 @@ bool Game::OnUserCreate()
     player      = new Player(olc::vf2d(2.0f, 17.0f), olc::BLUE);
     levels      = new Level();
     sb          = new Scoreboard();
+    escapeNet   = new EscapeNet();
 
-    starMap->Create();    
+    starMap->Create();
+    escapeNet->InitSession();
 
     return true;
 }
 
 bool Game::OnUserUpdate(float fElapsedTime)
 {
+    fElapsedTime = std::clamp(fElapsedTime, 0.0f, thirtyFramesPerSecond);
     globalDeltaTime = fElapsedTime;
 
     if (gamepad == nullptr || !gamepad->stillConnected)
@@ -99,13 +128,23 @@ bool Game::OnUserFixedUpdate()
     if (levels->GetTile(player->position.x + 0.5f, player->position.y + 0.5f) == 'C')
     {
         if (mode == TIME_ATTACK)
+        {
+            // hack to trigger once
+            if(timeAttack->timeRunning)
+            {
+                std::cout << "END RACE\n";
+                escapeNet->StartPause();
+            }
             timeAttack->timeRunning = false;
+        }
+            
         playerControl = false;
         if (player->size.x <= 0.0f &&
             player->size.y <= 0.0f)
         {
             vObjects.clear();
             state = ENDING;
+            ending->Init();
         }
     }
 
@@ -114,8 +153,16 @@ bool Game::OnUserFixedUpdate()
 
 void Game::Update()
 {
-    if (GetKey(olc::ESCAPE).bPressed || GetGamePadButton(olc::GPButtons::START).bPressed)
+    if ((GetKey(olc::ESCAPE).bPressed || GetGamePadButton(olc::GPButtons::START).bPressed) && !pauseMenu->bIsOn)
+    {
         pauseMenu->bIsOn = true;
+        if(timeAttack->timeRunning)
+        {
+            std::cout << "PAUSE START\n";
+            escapeNet->StartPause();
+        }
+    }
+        
 
     if (pauseMenu->bIsOn)
         pauseMenu->Update(levels, timeAttack, player->initPosition);
@@ -194,20 +241,45 @@ void Game::Restart()
     playerControl = true;
 }
 
+bool Game::IsGamePadReady()
+{
+    if (!bUseGamepad)
+        return false;
+    
+    // try to acquire a gamepad
+    if (gamepad == nullptr)
+    {
+        if (!(gamepad = olc::GamePad::selectWithAnyButton()))
+            return false;
+    }
+    
+    // if we're here, we have a gamepad, but it might have disconnected
+    if (!gamepad->stillConnected)
+    {
+        if (!(gamepad = olc::GamePad::selectWithAnyButton()))
+            return false;
+    }
+            
+    // if we're here, we definitely have a gamepad that is connected
+    return true;
+}
+
 olc::HWButton Game::GetGamePadButton(olc::GPButtons b)
 {
-    if (gamepad != nullptr && gamepad->stillConnected)
-            return gamepad->getButton(b);
-    return olc::HWButton();
+    if(!bUseGamepad || !IsGamePadReady())
+        return olc::HWButton();
+    
+    return gamepad->getButton(b);
 }
 
 float Game::GetGamepadAxis(olc::GPAxes a)
 {
-    if (gamepad != nullptr && gamepad->stillConnected)
-    {
-        if (std::abs(gamepad->getAxis(a)) > 0.3f)
-            return gamepad->getAxis(a);
-    }
+    if(!bUseGamepad || !IsGamePadReady())
+        return 0.0f;
+    
+    if (std::abs(gamepad->getAxis(a)) > 0.3f)
+        return gamepad->getAxis(a);
+
     return 0.0f;
 }
 

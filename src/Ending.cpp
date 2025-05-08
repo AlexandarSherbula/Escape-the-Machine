@@ -12,10 +12,11 @@ Ending::Ending()
     mEncore    =  new SpriteObject("Encore");
     mSurvive   =  new SpriteObject("Survival");
 	mLpoGuy    =  new SpriteObject("LPOguy");
-
+	mTimer = 0.0f;
+	mEncoreDialogTextID = 0;
 	mTimeScoreName = "";
-	incrementCount = true;
 	mCanType = true;
+	mCurseWordFound = false;
 
 	mClouds = new SpriteObject* [12];
     for (int i = 0; i < 12; i++)
@@ -38,6 +39,12 @@ Ending::~Ending()
 		delete mClouds[i];
 
 	delete[] mClouds;
+}
+
+void Ending::Init()
+{
+	mCanType = true;
+	mTimeScoreName = "";
 }
 
 void Ending::Update()
@@ -64,14 +71,15 @@ void Ending::Update()
 			{
 				if (game->PressConfirmButton())
 				{
-					if (game->mode == MAIN)
-						game->sb->IncrementCount("normal/main");
-					else if (game->mode == SURVIVAL)
-						game->sb->IncrementCount("normal/survival");
-
 					mTimer = 0.0f;
 					game->Restart();
 					game->state = MAIN_MENU;
+					
+					if(game->mode == MAIN)
+						game->escapeNet->IncrementCounter("normal-main");
+					
+					if(game->mode == SURVIVAL)
+						game->escapeNet->IncrementCounter("normal-survival");
 				}
 			}
 			else if (game->content == ENCORE)
@@ -82,16 +90,18 @@ void Ending::Update()
 						mEncoreDialogTextID++;
 					else
 					{
-						if (game->mode == MAIN)
-							game->sb->IncrementCount("encore/main");
-						else if (game->mode == SURVIVAL)
-							game->sb->IncrementCount("encore/survival");
-
 						mTimer = 0.0f;
 						game->Restart();
 						game->state = MAIN_MENU;
 						mLpoGuy->sprSheetOffset = { 0, 0 };
 						mEncoreDialogTextID = 0;
+
+						if(game->mode == MAIN)
+							game->escapeNet->IncrementCounter("encore-main");
+						
+						if(game->mode == SURVIVAL)
+							game->escapeNet->IncrementCounter("encore-survival");
+
 					}
 				}
 				if (game->GetKey(olc::ESCAPE).bPressed || game->GetGamePadButton(olc::GPButtons::START).bPressed)
@@ -112,12 +122,12 @@ void Ending::Update()
 			mGrass->DrawFullSprite(olc::vi2d(i * 32, 222.0f));
 
 		game->player->Draw();
-
+		
 		if (mTimer > 1.0f)
 		{
 			if (game->mode == SURVIVAL)
 				mSurvive->DrawFullSprite(olc::vi2d(110, 48));
-
+			
 			if (game->content == NORMAL)
 			{
 				mVictory->DrawFullSprite(olc::vi2d(120, 120));
@@ -138,8 +148,6 @@ void Ending::Update()
 	else
 	{
 		game->starMap->Update();
-
-		bool curseWordFound = game->timeAttack->FindCurseWord(mTimeScoreName);
 
 		if (mCanType)
 		{	
@@ -162,33 +170,28 @@ void Ending::Update()
 			if (game->GetKey(olc::BACK).bPressed && mTimeScoreName.size() > 0)
 				mTimeScoreName.resize(mTimeScoreName.size() - 1);
 
-			if (game->GetKey(olc::ENTER).bPressed && !curseWordFound)
+			if (game->GetKey(olc::ENTER).bPressed)
 			{
-				mCanType = false;
+				mCurseWordFound = !game->escapeNet->SetName(mTimeScoreName);
+				if(!mCurseWordFound)
+				{
+					game->escapeNet->EndPause();
+					mCanType = false;
 
-				uint32_t& minutes = game->timeAttack->mCurrentMinutes;
-				uint32_t& seconds = game->timeAttack->mCurrentSeconds;
-				uint32_t& miliseconds = game->timeAttack->mCurrentMiliSeconds;
-				
-				//Update Leaberboard
-				if (game->content == NORMAL)
-					game->sb->NewScore("normal", mTimeScoreName, minutes, seconds, miliseconds);
-				else
-					game->sb->NewScore("encore", mTimeScoreName, minutes, seconds, miliseconds);
-
-				game->sb->RefreshScores();				
+					uint32_t& minutes = game->timeAttack->mCurrentMinutes;
+					uint32_t& seconds = game->timeAttack->mCurrentSeconds;
+					uint32_t& miliseconds = game->timeAttack->mCurrentMiliSeconds;
+					
+					//Update Leaberboard
+					game->escapeNet->FinishRace();
+					game->sb->RefreshScores();				
+				}
 			}			
 		}
 		else
 		{
 			if (game->GetKey(olc::ENTER).bPressed)
 			{
-				incrementCount = true;
-				if (game->content == NORMAL)
-					game->sb->IncrementCount("normal/time");
-				else
-					game->sb->IncrementCount("encore/time");
-
 				game->Restart();
 				game->state = MAIN_MENU;
 			}
@@ -217,7 +220,7 @@ void Ending::Update()
 			game->DrawStringDecalXAligned("Press enter to go to main menu", olc::vi2d(0, 286));
 		}
 
-		if (curseWordFound)
+		if (mCurseWordFound)
 		{
 			game->DrawStringDecalXAligned("FORBIDDEN WORD!!!", olc::vi2d(0, 208), olc::WHITE, { 2.0f, 2.0f });
 			game->DrawStringDecalXAligned("PLEASE CHOOSE ANOTHER NAME", olc::vi2d(0, 226), olc::WHITE, { 2.0f, 2.0f });
